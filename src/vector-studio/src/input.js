@@ -11,6 +11,12 @@
  *   starts with one finger never selects or deselects anything.
  * - A touch long press opens the context menu (iPad Safari sends no
  *   contextmenu event for it).
+ * - iPad: a two-finger tap undoes and a three-finger tap redoes (as in the
+ *   system gesture). While the Apple Pencil is down, finger touches on the
+ *   canvas are ignored (palm rejection). Losing focus, the page being hidden
+ *   or pointercancel release every pointer and abort the active drag.
+ * - Modifier keys come from ui/modifiers.js so the on-screen sticky
+ *   Shift/Alt/Ctrl toggles work with a Pencil or finger.
  */
 
 /** How long a single finger waits for a second one before the tool starts. */
@@ -18,7 +24,9 @@ export const TOUCH_SETTLE_MS = 90;
 /** Hold time for the touch context menu, and the slop that still counts as holding. */
 export const LONG_PRESS_MS = 550;
 const TOUCH_SLOP = 8;
-import { IS_MAC } from './commands/registry.js';
+/** A multi-finger tap: every finger down and up within this time, none moving. */
+export const MULTI_TAP_MS = 250;
+import { getModifiers, setActivePointerType } from './ui/modifiers.js';
 
 export class CanvasInput {
   constructor(app, host) {
@@ -37,8 +45,17 @@ export class CanvasInput {
     host.addEventListener('pointerleave', () => this.leave());
     host.addEventListener('wheel', (e) => this.wheel(e), { passive: false });
     host.addEventListener('contextmenu', (e) => this.contextMenu(e));
-    // Safari trackpad pinch.
+    // Safari trackpad pinch on the canvas, and iPad Safari's page pinch anywhere: the app zooms, not the page.
     host.addEventListener('gesturestart', (e) => e.preventDefault());
+    const g = typeof document !== 'undefined' ? document : null;
+    g?.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+    g?.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+    // Losing the window or the page (app switcher, Pencil hover-out, notifications) ends every drag.
+    if (typeof window !== 'undefined') window.addEventListener('blur', () => this.releaseAll());
+    g?.addEventListener('visibilitychange', () => g.visibilityState === 'hidden' && this.releaseAll());
+    // Fingers of a possible multi-finger tap: pointerId -> { t, x, y, moved }.
+    this.taps = new Map();
+    this.penDown = false;
   }
 
   get editor() {
@@ -56,14 +73,15 @@ export class CanvasInput {
     const sx = e.clientX - r.left;
     const sy = e.clientY - r.top;
     const p = this.editor.view.toDoc(sx, sy);
+    const m = getModifiers(e); // hardware keys OR the on-screen sticky toggles
     return {
       x: p.x,
       y: p.y,
       sx,
       sy,
-      shift: e.shiftKey,
-      alt: e.altKey,
-      mod: IS_MAC ? e.metaKey : e.ctrlKey,
+      shift: m.shift,
+      alt: m.alt,
+      mod: m.mod,
       button: e.button,
       pointerType: e.pointerType,
       pressure: e.pressure || 0.5,
@@ -78,9 +96,23 @@ export class CanvasInput {
 
   down(e) {
     if (!this.editor) return;
+    // Palm rejection: while the Pencil draws, the resting hand's touches are not input.
+    if (e.pointerType === 'touch' && this.penDown) return;
+    if (e.pointerType === 'pen') {
+      this.penDown = true;
+      // A Pencil tip replaces any finger interaction in progress.
+      for (const [id, p] of this.pointers) if (p.type === 'touch') this.pointers.delete(id);
+      if (this.gesture) this.gesture = null;
+      this.#clearTouchTimers();
+      this.pendingTouch = null;
+    }
+    setActivePointerType(e.pointerType);
     this.host.focus({ preventScroll: true });
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
-    if (e.pointerType === 'touch' && this.pointers.size === 2) {
+    if (e.pointerType === 'touch') this.taps.set(e.pointerId, { t: e.timeStamp || performance.now(), x: e.clientX, y: e.clientY, moved: false });
+    if (e.pointerType === 'touch' && this.pointers.size >= 2) {
+      if (this.pointers.size > 2) return; // third finger: only a possible redo tap
+      // Second finger: abandon the tool interaction and start a pinch.
       // Second finger: abandon the tool interaction and start a pinch.
       this.#clearTouchTimers();
       this.pendingTouch = null;
@@ -91,7 +123,6 @@ export class CanvasInput {
       this.startGesture();
       return;
     }
-    if (this.pointers.size > 2) return;
     try {
       this.host.setPointerCapture(e.pointerId);
     } catch {
@@ -161,6 +192,9 @@ export class CanvasInput {
 
   move(e) {
     if (!this.editor) return;
+    if (e.pointerType === 'touch' && this.penDown) return;
+    const tap = this.taps.get(e.pointerId);
+    if (tap && !tap.moved && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > TOUCH_SLOP) tap.moved = true;
     if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     if (e.pointerType === 'touch' && this.pointers.has(e.pointerId)) {
       if (this.longPressed) return;
@@ -195,7 +229,10 @@ export class CanvasInput {
   }
 
   up(e) {
+    if (e.pointerType === 'pen') this.penDown = false;
+    if (e.pointerType === 'touch' && !this.pointers.has(e.pointerId)) return; // rejected palm touch
     if (e.pointerType === 'touch') {
+      this.#multiTap(e);
       clearTimeout(this.longPressTimer);
       this.longPressTimer = 0;
       if (this.longPressed) {
@@ -229,7 +266,79 @@ export class CanvasInput {
     }
   }
 
+  /**
+   * Two fingers tapped together undo, three redo. Every finger must go down
+   * and come up within MULTI_TAP_MS without moving; the gesture that the
+   * second finger started is discarded (it never changed the view).
+   */
+  #multiTap(e) {
+    const tap = this.taps.get(e.pointerId);
+    this.taps.delete(e.pointerId);
+    if (!tap) return;
+    const now = e.timeStamp || performance.now();
+    if (tap.moved || now - tap.t > MULTI_TAP_MS) {
+      this.tapGroup = null;
+      return;
+    }
+    const g = this.tapGroup && now - this.tapGroup.t0 <= MULTI_TAP_MS ? this.tapGroup : { t0: tap.t, lifted: 0, fingers: 0 };
+    g.lifted++;
+    g.fingers = Math.max(g.fingers, this.pointers.size); // fingers still down includes this one
+    this.tapGroup = g;
+    if (this.pointers.size > 1) return; // more fingers still down
+    this.tapGroup = null;
+    if (g.fingers === 2 && g.lifted === 2) this.#history('undo');
+    else if (g.fingers === 3 && g.lifted === 3) this.#history('redo');
+  }
+
+  #history(which) {
+    const cmd = `edit.${which}`;
+    const commands = this.app.commands;
+    if (commands?.get?.(cmd)) {
+      if (commands.isEnabled(cmd)) commands.run(cmd);
+      return;
+    }
+    this.active?.tool.cancel?.();
+    this.active = null;
+    this.editor?.doc?.[which]?.();
+  }
+
+  /** Release every pointer and abort the active drag (blur, hidden page). */
+  releaseAll() {
+    for (const id of this.pointers.keys()) {
+      try {
+        this.host.releasePointerCapture(id);
+      } catch {
+        // Already released.
+      }
+    }
+    this.pointers.clear();
+    this.taps.clear();
+    this.tapGroup = null;
+    this.pendingTouch = null;
+    this.#clearTouchTimers();
+    this.longPressed = false;
+    this.penDown = false;
+    if (this.active) {
+      this.active.tool.cancel?.();
+      this.active = null;
+    }
+    if (this.pan) {
+      this.pan = null;
+      this.app.setCanvasCursor?.(this.currentTool()?.cursor || 'default');
+    }
+    this.gesture = null;
+    setActivePointerType('mouse');
+  }
+
   cancel(e) {
+    if (e.pointerType === 'pen') this.penDown = false;
+    this.taps.delete(e.pointerId);
+    this.tapGroup = null;
+    try {
+      this.host.releasePointerCapture(e.pointerId);
+    } catch {
+      // Already released.
+    }
     if (this.pendingTouch?.e.pointerId === e.pointerId) this.pendingTouch = null;
     this.#clearTouchTimers();
     this.longPressed = false;

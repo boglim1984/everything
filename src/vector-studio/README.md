@@ -35,6 +35,17 @@ npm run build   # production build in dist/ (includes the collaboration worker)
 - `src/features/` feature modules, each registering its tools, panels, commands and hooks (`src/features.js` installs them): files, import/export, format interoperability (PDF, EPS, DXF, TIFF, PSD), geometry, paint, type, symbols, brushes, effects, 3D, envelopes, repeat, paint regions, trace, mesh, graphs, perspective, patterns, slices, workspaces, panels, collaboration and more.
 - `worker/` the collaboration server that sharing deploys to the owner's Puter account.
 
+## iPad and Apple Pencil
+
+The canvas and the shell use Pointer Events, so the Apple Pencil (`pointerType === "pen"`) draws with the Pen tool, drags anchors and direction handles, and its pressure reaches the brushes that vary with it. Specifics for iPad (`src/input.js`, `src/ui/modifiers.js`, `src/styles/responsive.css`):
+
+- Palm rejection: while the Pencil is down, finger touches on the canvas are ignored. `pointercancel`, a window blur or the page being hidden release every pointer and abort the active drag.
+- Gestures on the canvas: two fingers pan and pinch-zoom (the page itself never zooms), a long press opens the context menu, a two-finger tap undoes and a three-finger tap redoes.
+- Coarse pointers (`@media (pointer: coarse)`): 44 px hit targets for buttons, tabs, menu items and slider thumbs; a sticky Shift / Option / Cmd bar floats over the canvas and is ORed with the hardware keys via `getModifiers(e)`; the panel dock collapses from its close button and reopens from the status bar; tooltips show on touch-and-hold; a tap on a numeric label (stroke weight, X/Y/W/H, ...) focuses its decimal field so the keyboard opens.
+- Anchor, handle and path hit zones double for pen and touch input (`hitScale()`), so Pencil taps grab points as reliably as a mouse does.
+
+Run the iPad end-to-end test (iPad Pro 11 emulation with touch, headless Chromium) with `npm run test:e2e`. It uses a pre-installed Chromium at `/opt/pw-browsers/chromium` or the one `PW_CHROME_PATH` points to; set `E2E_PORT` when several checkouts run at once. `window.__vectorStudioDebug.app` exposes the app instance to the test.
+
 ## License
 
 This repository, including all its contents, sub-projects, modules, and components, is licensed under [MIT](../../LICENSE) unless explicitly stated otherwise. Third-party libraries included in this repository may be subject to their own licenses.

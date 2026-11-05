@@ -10,6 +10,7 @@ import { Editor } from './editor.js';
 import { VDocument } from './model/document.js';
 import { CanvasView } from './render/canvas-view.js';
 import { CanvasInput } from './input.js';
+import { createModifierBar } from './ui/modifiers.js';
 import { CommandRegistry, IS_MAC, eventKey, normalizeShortcut, formatShortcut } from './commands/registry.js';
 import { registerCoreCommands } from './commands/core.js';
 import { registerAlignCommands } from './commands/align.js';
@@ -153,7 +154,9 @@ export class App extends Emitter {
     this.taskbar = h('div.taskbar', { role: 'toolbar', 'aria-label': 'Task bar', hidden: true });
     this.home = h('div.home-host', { hidden: true });
     this.statusbar = createStatusbar(this);
-    this.docArea = h('main#main.doc-area', this.tabsEl, this.isolationBar, h('div.canvas-stack', this.canvasWrap, this.taskbar, this.home), this.statusbar.el, this.canvasDesc);
+    // iPad: sticky Shift/Option/Cmd toggles float over the canvas (shown only for coarse pointers, see responsive.css).
+    this.modifierBar = createModifierBar();
+    this.docArea = h('main#main.doc-area', this.tabsEl, this.isolationBar, h('div.canvas-stack', this.canvasWrap, this.taskbar, this.home, this.modifierBar), this.statusbar.el, this.canvasDesc);
     this.dock = createDock(this);
     for (const P of this.panelClasses) this.dock.register(P);
     this.workspace = h('div.workspace', this.toolbar.el, this.docArea, this.dock.el);

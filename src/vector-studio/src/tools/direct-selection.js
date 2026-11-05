@@ -7,6 +7,7 @@
  * handle collinear (Alt breaks it into a corner).
  */
 import { Tool, tol, fmt, constrain45, constrainAngle } from './tool.js';
+import { hitScale } from '../ui/modifiers.js';
 import { hitTest, marqueeHits, pointInPolygon, nodeTouchesRect } from '../render/hit.js';
 import { TransformSession } from './transform-session.js';
 import { anchor, hasIn, hasOut, nearestOnPath, segmentPoints, segmentCount, pointAt } from '../model/bezier.js';
@@ -63,7 +64,8 @@ export function editablePaths(editor) {
 export function findAnchorOrHandle(editor, sx, sy, paths, { handles = true } = {}) {
   const { view } = editor;
   let best = null;
-  let bestD = ANCHOR_HIT;
+  // Anchor and handle grabs get a wider zone for pen and touch (ui/modifiers.js).
+  let bestD = ANCHOR_HIT * hitScale();
   for (const p of paths) {
     const sel = editor.selectedAnchors(p.id);
     const n = p.anchors.length;

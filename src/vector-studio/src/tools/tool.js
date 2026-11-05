@@ -7,6 +7,8 @@
  * against `this.app.editor`, the active document's editor.
  */
 
+import { hitScale } from '../ui/modifiers.js';
+
 export class Tool {
   /** Stable id, e.g. 'selection'. */
   static id = 'tool';
@@ -93,7 +95,8 @@ export class Tool {
 export function tol(editor, px = 4) {
   // Preferences > Selection & Anchor Display > Tolerance scales hit areas (3 px is the default).
   const scale = (editor.prefs?.get('selectionTolerance') || 3) / 3;
-  return (px * scale) / editor.view.zoom;
+  // Fingers and the Apple Pencil are less precise than a mouse: double the hit zone (ui/modifiers.js).
+  return (px * scale * hitScale()) / editor.view.zoom;
 }
 
 /**
