@@ -1,5 +1,6 @@
 // iPad + Apple Pencil: pen taps select and drag gizmo handles, one finger orbits, two fingers
-// pinch-dolly, two-finger tap undoes, the sticky modifier bar shows at a coarse pointer and the
+// pinch-dolly, two-finger tap undoes, three-finger tap redoes, the sticky modifier bar shows at a coarse
+// pointer and the
 // renderer pixel ratio is capped. Runs under the "ipad" Playwright project (iPad Pro 11 emulation).
 // Without a GPU (swiftshader) the WebGL id pass still works; if WebGL were unavailable the
 // camera/DOM/state assertions below remain meaningful while the pick-based ones are skipped.
@@ -119,7 +120,7 @@ test('Apple Pencil: tap selects the default object, dragging a gizmo axis moves 
   await expectNoErrors(errors);
 });
 
-test('touch: one finger orbits, two-finger pinch dollies, two-finger tap undoes', async ({ page }) => {
+test('touch: one finger orbits, two-finger pinch dollies, two-finger tap undoes, three-finger tap redoes', async ({ page }) => {
   const errors = await openApp(page);
   const { cx, cy } = await viewport(page);
   const cdp = await page.context().newCDPSession(page);
@@ -162,5 +163,14 @@ test('touch: one finger orbits, two-finger pinch dollies, two-finger tap undoes'
   await cdpTouch(cdp, 'touchEnd', []);
   await page.waitForTimeout(200);
   expect(await dbg<number>(page, 'app.activeObject.location[0]')).toBe(0);
+  // a quick three-finger tap redoes the undone move (touchStart → touchEnd well inside TAP_MS = 350 ms)
+  await cdpTouch(cdp, 'touchStart', [
+    { x: cx - 40, y: cy, id: 1 },
+    { x: cx, y: cy + 30, id: 2 },
+    { x: cx + 40, y: cy, id: 3 },
+  ]);
+  await cdpTouch(cdp, 'touchEnd', []);
+  await page.waitForTimeout(200);
+  expect(await dbg<number>(page, 'app.activeObject.location[0]')).toBe(3);
   await expectNoErrors(errors);
 });
