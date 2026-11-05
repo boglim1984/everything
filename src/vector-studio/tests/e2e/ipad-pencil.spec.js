@@ -1,6 +1,7 @@
 // iPad + Apple Pencil: pen-tool anchors and handle drags with pointerType "pen",
-// two-finger pinch zoom and two-finger tap undo (via CDP touch events), the
-// tap-to-edit numeric fields and the sticky modifier bar under (pointer: coarse).
+// two-finger pinch zoom, two-finger tap undo and three-finger tap redo (via CDP
+// touch events), the tap-to-edit numeric fields and the sticky modifier bar
+// under (pointer: coarse).
 import { test, expect, devices } from '@playwright/test';
 
 test.use({ ...devices['iPad Pro 11'], defaultBrowserType: 'chromium', hasTouch: true });
@@ -128,6 +129,26 @@ test('Pencil draws with the pen tool and iPad gestures work', async ({ page, con
   await page.waitForTimeout(60);
   await touch(cdp, 'touchEnd', []);
   await expect.poll(() => page.evaluate(() => window.__vectorStudioDebug.app.editor.doc.canRedo)).toBe(true);
+  const undone = await page.evaluate((id) => {
+    const p = window.__vectorStudioDebug.app.editor.doc.get(id);
+    return { x: p.anchors[1].x, y: p.anchors[1].y };
+  }, before.id);
+  expect(Math.hypot(undone.x - before.x, undone.y - before.y)).toBeLessThan(0.01); // the drag was undone
+
+  // Three-finger tap redoes it (all three down and up within MULTI_TAP_MS, no movement).
+  // The canvas may have been re-laid out by the undo, so aim at its current centre.
+  const r2 = await canvasRect(page);
+  const tx = r2.left + r2.width / 2;
+  const ty = r2.top + r2.height / 2;
+  await touch(cdp, 'touchStart', [{ x: tx - 40, y: ty }, { x: tx, y: ty }, { x: tx + 40, y: ty }]);
+  await page.waitForTimeout(60);
+  await touch(cdp, 'touchEnd', []);
+  await expect.poll(() => page.evaluate(() => window.__vectorStudioDebug.app.editor.doc.canRedo)).toBe(false);
+  const redone = await page.evaluate((id) => {
+    const p = window.__vectorStudioDebug.app.editor.doc.get(id);
+    return { x: p.anchors[1].x, y: p.anchors[1].y };
+  }, before.id);
+  expect(redone).toEqual(after); // the anchor drag is back
 
   // A finger tap on a numeric label edits the value (the keyboard opens for the focused field).
   await page.evaluate((id) => window.__vectorStudioDebug.app.editor.select([id]), before.id);
