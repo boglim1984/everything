@@ -110,6 +110,20 @@ export function installTooltips(root = document) {
   });
   root.addEventListener('focusout', hide);
   root.addEventListener('pointerdown', hide, true);
+  // Touch has no hover: touch-and-hold a control shows its tip, lifting hides it a moment later.
+  let holdTimer = 0;
+  root.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    const t = e.target.closest?.('[data-tip]');
+    clearTimeout(holdTimer);
+    if (t) holdTimer = setTimeout(() => show(t), 500);
+  });
+  const endHold = () => {
+    clearTimeout(holdTimer);
+    if (owner) setTimeout(hide, 1200);
+  };
+  root.addEventListener('pointerup', (e) => e.pointerType === 'touch' && endHold());
+  root.addEventListener('pointercancel', (e) => e.pointerType === 'touch' && endHold());
   root.addEventListener('keydown', (e) => e.key === 'Escape' && hide());
 }
 
@@ -175,6 +189,12 @@ export function numberField({ label, kind = 'length', value, unit = 'pt', onComm
   lab.addEventListener('pointerdown', (e) => {
     if (!Number.isFinite(current)) return;
     e.preventDefault();
+    // iPad: a finger or Pencil tap on the label edits the value (scrubbing by touch is imprecise and
+    // hides the number under the finger); the decimal keyboard opens for the focused field.
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      input.focus();
+      return;
+    }
     lab.setPointerCapture(e.pointerId);
     const x0 = e.clientX;
     const v0 = current;

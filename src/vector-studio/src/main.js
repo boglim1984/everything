@@ -47,6 +47,7 @@ async function boot() {
   let picture = null;
   if (puter && (env === 'app' || puter.auth.isSignedIn())) ({ user, picture } = await profile(puter));
 
+  // Small hook for end-to-end tests (tests/e2e) and debugging; not a public API.
   const app = new App(root, {
     prefs,
     env,
@@ -71,6 +72,7 @@ async function boot() {
           }
         : null,
   });
+  window.__vectorStudioDebug = { app };
   app.puter = puter;
   installFeatures(app);
   app.start();

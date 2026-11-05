@@ -272,17 +272,94 @@
   }
 }
 
+/* iPad and other touch devices: 44 px hit targets, the sticky modifier bar and a reachable panel toggle. */
+.modifier-bar {
+  display: none;
+}
+
 @media (pointer: coarse) {
   .menu-item {
-    min-height: 36px;
+    min-height: 44px;
   }
 
-  .icon-btn {
-    width: 34px;
-    height: 34px;
+  .icon-btn,
+  .icon-btn.small,
+  .tool-btn,
+  .dock-tab,
+  .strip-btn,
+  .panel-strip button,
+  .flyout-item,
+  .tearoff-mini,
+  .segmented button,
+  button.btn {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .layer-row {
-    height: 36px;
+    height: 44px;
+  }
+
+  input[type='range'] {
+    min-height: 44px;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    width: 28px;
+    height: 28px;
+  }
+
+  .num-label {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .num-input {
+    min-height: 44px;
+    font-size: 16px; /* iOS Safari zooms the page for smaller inputs */
+  }
+
+  /* The dock's own close button doubles as the collapse toggle; the status bar's Panels button reopens it. */
+  .sheet-close {
+    display: inline-flex;
+  }
+
+  .status-panels {
+    display: inline-flex;
+  }
+
+  .modifier-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    border-radius: var(--radius-lg, 10px);
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-float);
+    z-index: 5;
+    touch-action: none;
+  }
+
+  .mod-toggle {
+    min-width: 56px;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: var(--radius, 6px);
+    border: 1px solid var(--border);
+    background: var(--bg-elev, var(--bg-panel));
+    color: var(--text-1, inherit);
+    font: inherit;
+    font-weight: 600;
+  }
+
+  .mod-toggle[aria-pressed='true'] {
+    background: var(--accent);
+    color: var(--accent-fg, #fff);
+    border-color: var(--accent);
   }
 }
