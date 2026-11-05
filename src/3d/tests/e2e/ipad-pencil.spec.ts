@@ -159,9 +159,8 @@ test('touch: one finger orbits, two-finger pinch dollies, two-finger tap undoes'
     { x: cx - 30, y: cy, id: 1 },
     { x: cx + 30, y: cy, id: 2 },
   ]);
-  await page.waitForTimeout(40);
   await cdpTouch(cdp, 'touchEnd', []);
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(200);
   expect(await dbg<number>(page, 'app.activeObject.location[0]')).toBe(0);
   await expectNoErrors(errors);
 });

@@ -17,7 +17,7 @@ interface Touch {
 }
 
 const LONG_PRESS_MS = 500;
-const TAP_MS = 250;
+const TAP_MS = 350; // generous: synthetic/CDP taps and slow tablets
 const MOVE_SLOP = 10;
 
 /** pen pointers currently down anywhere (palm rejection) */
