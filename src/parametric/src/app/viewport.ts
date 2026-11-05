@@ -298,6 +298,8 @@ export class Viewport {
       // A press without movement is a click for the tool.
       if (g.moved) this.tool?.pointerUp?.(ev);
       else if (!this.tool?.click?.(ev)) this.app.onViewportClick(ev);
+      // A tap the tool handled (e.g. selecting sketch geometry) still uses up the one-shot modifier.
+      if (!g.moved) this.consumeTouchModifiers();
       return;
     }
     if (g.kind === 'pending') {
