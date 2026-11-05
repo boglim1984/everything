@@ -138,6 +138,7 @@ export class App {
     this.buildLeftTabs();
     this.buildRibbonTabs();
     this.buildHud();
+    this.buildTouchBar();
     this.buildTaskPane();
     this.bindShell();
     this.store.on((reason) => this.onStoreChange(reason));
@@ -299,6 +300,99 @@ export class App {
       h('span', { class: 'sep hide-mobile' }),
       b('perspective', 'hide-mobile'), b('normalTo'),
     );
+  }
+
+  // ---------- touch bar ----------
+
+  touchBar: HTMLElement | null = null;
+
+  /**
+   * On-screen stand-ins for the mouse and keyboard on tablets: undo/redo,
+   * modifier toggles (multi-select = Shift, no snap = Ctrl), finger/pen
+   * roles, zoom, a context-menu button and a value field for dimensions and
+   * the active command. Shown when a coarse pointer exists or once a finger
+   * or pen touches the canvas; desktop mouse users never see it.
+   */
+  private buildTouchBar() {
+    const vp = this.viewport;
+    const toggle = (label: string, ic: string, onChange: (on: boolean) => void) => {
+      const b = h('button', { class: 'icon-btn tb-toggle', type: 'button', 'aria-label': label, 'aria-pressed': 'false' }, icon(ic, 18)) as HTMLButtonElement;
+      b.addEventListener('click', () => {
+        const on = b.getAttribute('aria-pressed') !== 'true';
+        b.setAttribute('aria-pressed', String(on));
+        onChange(on);
+      });
+      attachTooltip(b, label);
+      return b;
+    };
+    const shift = toggle('Multi-select (Shift)', 'plus', (on) => { vp.touchModifiers.shift = on; });
+    const ctrl = toggle('Snapping off (Ctrl)', 'lock', (on) => { vp.touchModifiers.ctrl = on; });
+    const finger = toggle('Finger draws', 'pan', (on) => { vp.fingerDraws = on; });
+    vp.onTouchModifierUsed = () => {
+      // Modifiers are one-shot so a tap after a multi-select tap is not sticky.
+      if (vp.touchModifiers.shift) { vp.touchModifiers.shift = false; shift.setAttribute('aria-pressed', 'false'); }
+    };
+    const ctxBtn = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Context menu', 'aria-haspopup': 'menu' }, icon('more', 18)) as HTMLButtonElement;
+    ctxBtn.addEventListener('click', () => {
+      const r = vp.canvas.getBoundingClientRect();
+      const at = vp.lastTapClient ?? { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      const ev = { x: at.x - r.left, y: at.y - r.top, button: 2, shift: false, ctrl: false, alt: false, ray: vp.camera.ray(at.x - r.left, at.y - r.top), pointerType: 'touch', native: new MouseEvent('contextmenu') } as VPEvent;
+      this.onViewportContextMenu(ev, at.x, at.y);
+    });
+    attachTooltip(ctxBtn, 'Context menu', undefined, 'Same as a long press or right click at the last tap.');
+    const value = h('input', { class: 'input tb-value', type: 'text', inputmode: 'decimal', autocomplete: 'off', spellcheck: 'false', placeholder: 'Value', 'aria-label': 'Value entry: type a number or expression and press Enter to set the selected dimension or the active command\u2019s first value' }) as HTMLInputElement;
+    value.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { value.value = ''; value.blur(); return; }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      if (this.applyTypedValue(value.value)) { value.value = ''; value.blur(); }
+    });
+    const bar = h('div', { class: 'touchbar', role: 'toolbar', 'aria-label': 'Touch controls' },
+      this.commandIcon('undo'), this.commandIcon('redo'),
+      h('span', { class: 'sep' }),
+      shift, ctrl, finger, ctxBtn,
+      h('span', { class: 'sep' }),
+      this.commandIcon('zoomIn'), this.commandIcon('zoomOut'), this.commandIcon('zoomFit'),
+      h('span', { class: 'sep' }),
+      value);
+    this.touchBar = bar;
+    this.shell.viewport.append(bar);
+    // Reveal on the first touch or pen contact even where media queries miss it.
+    const reveal = (e: PointerEvent) => {
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') document.documentElement.classList.add('touch-ui');
+      if (e.pointerType === 'pen') document.documentElement.classList.add('pen-seen');
+    };
+    vp.canvas.addEventListener('pointerdown', reveal, { passive: true });
+    // Safari pinch on the chrome would zoom the page; the canvas handles its own pinch.
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('gesturechange', (e) => e.preventDefault());
+  }
+
+  /** Applies the touch bar value to the selected dimension or the active panel's first number field. */
+  applyTypedValue(text: string): boolean {
+    const t = text.trim();
+    if (!t) return false;
+    const dim = this.selection.ofKind('skdim')[0];
+    if (this.sketchEditor && dim) {
+      this.sketchEditor.openModify(dim.id);
+      const input = this.viewport.root.querySelector<HTMLInputElement>('.modify-box input');
+      if (input) {
+        input.value = t;
+        input.dispatchEvent(new Event('input'));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        return !this.sketchEditor.modifyOpen;
+      }
+    }
+    const field = this.shell.lpBody.querySelector<HTMLInputElement>('.pm input.input');
+    if (field) {
+      field.value = t;
+      field.dispatchEvent(new Event('change'));
+      if (field.classList.contains('invalid')) { this.setStatus(field.title || 'Invalid value'); return false; }
+      return true;
+    }
+    this.setStatus('Select a dimension or start a command, then type a value.');
+    return false;
   }
 
   private commandIcon(cmd: string): HTMLButtonElement {
@@ -903,6 +997,15 @@ export class App {
       const f = this.faces[item.index];
       if (f) this.editFeature(f.feature);
     } else if (item?.kind === 'plane' && item.ref.kind === 'feature') this.editFeature(item.ref.id);
+  }
+
+  /** Touch double tap: edit the feature under the finger, or zoom to fit on empty space. */
+  onViewportDoubleTap(e: VPEvent) {
+    if (!this.panel && !this.sketchEditor) {
+      const item = this.viewport.pickItem(e.x, e.y, { face: true, plane: true });
+      if (item) { this.onViewportDoubleClick(e); return; }
+    }
+    this.viewport.zoomToFit();
   }
 
   onViewportContextMenu(e: VPEvent, cx: number, cy: number) {
