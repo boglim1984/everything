@@ -10,6 +10,8 @@ import { MenuBar } from './app/menubar';
 import { Toolbar } from './app/toolbar';
 import { Dock } from './app/dock';
 import { bindCanvas, type CanvasPointer } from './app/pointer';
+import { mountModifierBar, watchCoarsePointer } from './app/modifiers';
+import { BrushStrip } from './app/brush-strip';
 import { commands, findCommand, overlays, tools, type Tool } from './app/registry';
 import { brushSizeStep, eventShortcut, platformShortcut } from './app/shortcuts';
 import { watchOptionTips } from './app/option-tips';
@@ -321,6 +323,10 @@ export class Editor {
     this.bind();
     this.transform.bind();
     bindCanvas(this);
+    // iPad: sticky modifier keys and left-thumb brush sliders (shown under a coarse pointer, see style.css).
+    watchCoarsePointer();
+    mountModifierBar(this.el('.canvas-area'));
+    this.brushStrip = new BrushStrip(this, this.el('.canvas-area'));
     this.dock.render();
     performance.mark('photo-studio:shell');
     this.renderer = await Renderer.create(this.el<HTMLCanvasElement>('#canvas'), this.engine, this.preferences.gpuBackend);
@@ -507,9 +513,11 @@ export class Editor {
     if (!this.transform.active) tool?.bindOptions?.({ e: this, el });
     this.el('#viewport').dataset.tool = this.tool;
     this.el('#viewport').style.cursor = this.cursorFor ? this.cursorFor(tool) : (tool?.cursor?.(this) ?? '');
+    this.brushStrip?.update();
   }
   // The viewport cursor for a tool (Preferences → Cursors).
   cursorFor?: (tool: Tool | undefined) => string;
+  brushStrip?: BrushStrip;
   setTool(id: string) {
     if (!tools.has(id)) return;
     if (this.transform.dragging && !this.transform.active) this.transform.cancel();

@@ -2332,3 +2332,61 @@ html.feature-loading .statusbar::after { content: ''; position: absolute; left: 
 @keyframes feature-loading { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .panel-loading { min-height: 48px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 12%, transparent), transparent) 0 0 / 40% 100% no-repeat; animation: feature-loading 0.9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { html.feature-loading .statusbar::after, .panel-loading { animation: none; } }
+
+/* ---------- iPad / coarse pointer ----------
+   `html[data-pointer='coarse']` follows the (pointer: coarse) media query (see
+   app/modifiers.ts, which also honours ?pointer=coarse for tests). Hit targets
+   grow to 44px, hover-only affordances become always visible, and the sticky
+   modifier bar plus the left-thumb brush strip appear over the canvas. */
+.modifier-bar, .brush-strip { display: none; }
+@media (pointer: coarse) {
+  :root { --tap: 44px; }
+}
+html[data-pointer='coarse'] {
+  --tap: 44px;
+}
+html[data-pointer='coarse'] button,
+html[data-pointer='coarse'] .icon-button,
+html[data-pointer='coarse'] .menu-item,
+html[data-pointer='coarse'] .menubar-button,
+html[data-pointer='coarse'] .dock-strip button,
+html[data-pointer='coarse'] .panel-tabs [role='tab'],
+html[data-pointer='coarse'] .document-tab,
+html[data-pointer='coarse'] .layer-row { min-height: var(--tap); }
+html[data-pointer='coarse'] .tool-slot,
+html[data-pointer='coarse'] .dock-strip button,
+html[data-pointer='coarse'] .panel-menu-button,
+html[data-pointer='coarse'] [data-drawer-close],
+html[data-pointer='coarse'] .icon-button { min-width: var(--tap); min-height: var(--tap); }
+html[data-pointer='coarse'] .tool-slot { width: var(--tap); height: var(--tap); }
+html[data-pointer='coarse'] .editor-layout { grid-template-columns: 52px minmax(0, 1fr) auto; }
+html[data-pointer='coarse'] .dock-strip { width: 48px; }
+html[data-pointer='coarse'] .panel-tabs { height: var(--tap); }
+html[data-pointer='coarse'] .menu-item { padding-top: 10px; padding-bottom: 10px; }
+html[data-pointer='coarse'] input[type='range'] { height: var(--tap); }
+html[data-pointer='coarse'] input[type='range']::-webkit-slider-thumb { width: 28px; height: 28px; }
+html[data-pointer='coarse'] input[type='range']::-moz-range-thumb { width: 28px; height: 28px; }
+/* Hover-only affordances get a tap equivalent: close buttons and handles stay visible. */
+html[data-pointer='coarse'] .document-tab .tab-close,
+html[data-pointer='coarse'] .vt-clip .vt-trim,
+html[data-pointer='coarse'] .vt-clip.audio .vt-afade-handle,
+html[data-pointer='coarse'] .mask-link.unlinked svg { opacity: 1; }
+/* The panel toggle (Tab) is the collapse control for the side docks; make it prominent. */
+html[data-pointer='coarse'] .options-end [data-command='window.toggle-panels'] { border: 1px solid var(--line); }
+
+/* Sticky Shift / Alt / Ctrl toggles, top-right of the canvas. */
+html[data-pointer='coarse'] .modifier-bar { display: flex; position: absolute; right: 12px; top: 12px; z-index: 6; gap: 6px; padding: 4px; border-radius: 10px; background: color-mix(in srgb, var(--chrome) 88%, transparent); border: 1px solid var(--line); box-shadow: 0 4px 16px #0005; backdrop-filter: blur(8px); }
+.modifier-toggle { min-width: var(--tap, 44px); min-height: var(--tap, 44px); padding: 0 10px; font-weight: 600; font-size: 13px; border-radius: 8px; }
+.modifier-toggle[aria-pressed='true'] { background: var(--accent-fill); color: var(--accent-text); border-color: var(--accent); }
+
+/* Left-thumb brush strip, bottom-left of the canvas. */
+html[data-pointer='coarse'] .brush-strip { display: flex; flex-direction: column; position: absolute; left: 12px; bottom: 12px; z-index: 6; width: 250px; max-width: calc(100% - 24px); border-radius: 12px; background: color-mix(in srgb, var(--chrome) 90%, transparent); border: 1px solid var(--line); box-shadow: 0 4px 16px #0005; backdrop-filter: blur(8px); }
+html[data-pointer='coarse'] .brush-strip[hidden] { display: none; }
+.brush-strip-head { display: flex; align-items: center; gap: 4px; padding: 4px; }
+.brush-strip-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); padding-left: 4px; }
+.brush-strip-body { display: flex; flex-direction: column; padding: 0 10px 8px; }
+.brush-strip.collapsed .brush-strip-body { display: none; }
+.brush-strip-row { display: grid; grid-template-columns: 62px minmax(0, 1fr) 52px; align-items: center; gap: 8px; font-size: 12px; }
+.brush-strip-row input[type='range'] { width: 100%; }
+.brush-strip-row output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+/* Keep the canvas corners usable: rulers already offset the viewport, the strip floats above it. */
