@@ -62,6 +62,10 @@ export class FreeTransform {
   };
   private drag?: Drag;
   private pending: Pick[] = [];
+  /** Starts a Move-tool pick or drag for a press on the viewport; set by `bind`.
+   * Returns whether the event was taken. Finger touches reach it through
+   * app/pointer.ts once they are known not to be a navigation gesture. */
+  pointerDown: (event: PointerEvent) => boolean = () => false;
   private replayingPick = false;
   private abortPicks?: () => void;
   private guides: MoveGuides = {};
@@ -433,7 +437,14 @@ export class FreeTransform {
         }
       }
     };
+    // Mouse and pen presses start a pick or drag straight away. Finger touches
+    // are routed by app/pointer.ts instead (a second finger makes them a view
+    // gesture, a long press a context menu) and arrive through `touchDown`.
     viewport.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'touch') return;
+      this.pointerDown(event);
+    });
+    this.pointerDown = (event) => {
       if (
         event.button !== 0 ||
         this.drag ||
@@ -443,7 +454,7 @@ export class FreeTransform {
         this.e.tool !== 'move' ||
         (event.target as Element).closest('button')
       )
-        return;
+        return false;
       const handle = (event.target as Element).closest<SVGElement>('[data-transform-handle]')
         ?.dataset.transformHandle as Drag['handle'] | undefined;
       const request: Pick = {
@@ -460,7 +471,8 @@ export class FreeTransform {
       this.pending.push(request);
       viewport.setPointerCapture(event.pointerId);
       drain();
-    });
+      return true;
+    };
     viewport.addEventListener('pointermove', (event) => {
       const request = [...this.pending]
         .reverse()

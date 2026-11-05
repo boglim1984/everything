@@ -138,10 +138,11 @@ test.describe('iPad and Apple Pencil', () => {
     expect((await debug(page)).penDown).toBe(0);
   });
 
-  // FIXME: under headless Chromium + CDP only the first touch point of these sequences reaches the
-  // viewport as a pointer event (the two-finger tap test above shows multi-touch itself works after a
-  // pen stroke). The gesture code is exercised manually on iPad; see README.
-  test.fixme('two fingers pinch, rotate and pan the view', async ({ page }) => {
+  // The Move tool is active here (no prior tool change). Its own viewport pointerdown listener in
+  // ui/transform.ts used to take every press, fingers included, so the first finger never reached
+  // the gesture router and a second one looked like a lone tap; fingers are now handed to the Move
+  // tool only after the gesture grace period (see app/pointer.ts).
+  test('two fingers pinch, rotate and pan the view', async ({ page }) => {
     const c = await viewportCenter(page);
     const zoom0 = await page.evaluate(() => window.photoStudio.zoom);
     const cdp = await touchSession(page);
@@ -201,14 +202,11 @@ test.describe('iPad and Apple Pencil', () => {
     expect((await debug(page)).gestures).toContain('redo');
   });
 
-  // FIXME: under headless Chromium + CDP only the first touch point of these sequences reaches the
-  // viewport as a pointer event (the two-finger tap test above shows multi-touch itself works after a
-  // pen stroke). The gesture code is exercised manually on iPad; see README.
-  test.fixme('long press opens the canvas context menu', async ({ page }) => {
+  test('long press opens the canvas context menu', async ({ page }) => {
     const c = await viewportCenter(page);
     const cdp = await touchSession(page);
     await touches(cdp, 'touchStart', [{ x: c.x, y: c.y, id: 1 }]);
-    await expect(page.getByRole('menuitem', { name: /Select All|Deselect/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /^(All|Deselect|Reselect)\b/ }).first()).toBeVisible();
     await touches(cdp, 'touchEnd', []);
     expect((await debug(page)).gestures).toContain('long-press');
     await page.keyboard.press('Escape');

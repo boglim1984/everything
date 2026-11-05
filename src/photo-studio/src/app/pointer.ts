@@ -190,6 +190,9 @@ export function bindCanvas(e: Editor) {
   });
   const startPointer = (event: PointerEvent) => {
     viewport.focus({ preventScroll: true });
+    // Mouse and pen presses reach the Move tool's own viewport listener (ui/transform.ts)
+    // before this one; a finger that survived the gesture grace period is handed over here.
+    if (event.pointerType === 'touch' && e.transform.pointerDown(event)) return;
     const tool = e.activeTool;
     const pan = event.button === 1 || spaceHeld || (tool?.id === 'hand' && event.button === 0);
     cancelAnimationFrame(flick);
