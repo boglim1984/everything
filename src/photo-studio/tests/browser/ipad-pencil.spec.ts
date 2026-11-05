@@ -25,6 +25,9 @@ async function bootIpad(page: Page) {
   await page.goto('/?pointer=coarse');
   await page.waitForFunction(() => !!window.photoStudio?.renderer, null, { timeout: 90_000 });
   await expect(page.locator('#engine-status')).toHaveText(/WebGPU|WebGL2/);
+  // Headless Chromium routes CDP touch input to the page only once it has been
+  // interacted with; a click on the inert status text gives it focus.
+  await page.locator('#status').click();
 }
 
 async function viewportCenter(page: Page) {
