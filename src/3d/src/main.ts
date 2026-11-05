@@ -15,7 +15,7 @@ import { onImageReady } from './render/images';
 import { Shell, setShell } from './ui/shell';
 import { installTooltips, pointerDownOutsideMenus } from './ui/menu';
 // editors
-import { View3D, setLastView3D } from './editors/view3d/view3d';
+import { View3D, setLastView3D, lastView3D } from './editors/view3d/view3d';
 import { registerEditor } from './ui/screen';
 import './editors/outliner';
 import './ui/buttons';
@@ -45,6 +45,7 @@ import { setMode } from './ops/object';
 import { loadFonts } from './io/fonts';
 import { registerModules } from './modules';
 import { restoreAssistant } from './assistant';
+import { installModifierBar, preventPageZoom, modifierState, cappedPixelRatio, isCoarsePointer } from './ui/modifiers';
 
 // The app is Z-up; three.js defaults to Y-up for helpers.
 Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -70,7 +71,13 @@ let ctx: RenderContext;
 try {
   ctx = new RenderContext(app, document.body);
   setRenderContext(ctx);
-  ctx.engine.onLost = (msg) => showFatal(msg);
+  // iPad Safari drops WebGL contexts under memory pressure: show a banner and recover on restore
+  ctx.engine.onLost = (msg) => showBanner(msg);
+  ctx.engine.onRestored = () => {
+    hideBanner();
+    ctx.forceSync();
+    ctx.engine.requestDraw();
+  };
 } catch (e) {
   showFatal(`WebGL 2 is required to display the 3D viewport. ${e instanceof Error ? e.message : ''}`);
 }
@@ -139,6 +146,51 @@ addEventListener('visibilitychange', () => {
   if (document.hidden) void autosave();
 });
 addEventListener('beforeunload', () => void autosave());
+
+let bannerEl: HTMLElement | null = null;
+/** Non-blocking notice at the top of the window (context loss). */
+function showBanner(message: string) {
+  hideBanner();
+  bannerEl = document.createElement('div');
+  bannerEl.className = 'gl-banner';
+  bannerEl.setAttribute('role', 'status');
+  bannerEl.textContent = message;
+  document.body.append(bannerEl);
+}
+function hideBanner() {
+  bannerEl?.remove();
+  bannerEl = null;
+}
+
+// iPad: never let the page itself pinch-zoom, and show the sticky Shift/Ctrl/Alt bar at coarse pointers
+preventPageZoom();
+installModifierBar(document.body, [
+  {
+    label: 'Panels',
+    tip: 'Side Panels\nHide or show the editors around the 3D viewport (maximizes the viewport)',
+    onTap: () => {
+      const v = lastView3D;
+      if (v) shell.screen.toggleMaximize(v.area);
+    },
+    isOn: () => !shell.screen.maximized,
+  },
+]);
+
+// small debug surface for the iPad e2e tests and for the console
+(window as unknown as { __studio3dDebug: unknown }).__studio3dDebug = {
+  pixelRatio: () => ctx?.engine.renderer.getPixelRatio() ?? 0,
+  pixelRatioCap: () => cappedPixelRatio(),
+  coarse: () => isCoarsePointer(),
+  modifiers: modifierState,
+  limits: () => ctx?.engine.limits,
+  memory: () => ctx?.engine.renderer.info.memory,
+  nav: () => {
+    const v = lastView3D;
+    if (!v) return null;
+    const q = v.nav.rot;
+    return { distance: v.nav.distance, rot: [q.x, q.y, q.z, q.w], pivot: v.nav.pivot.toArray() };
+  },
+};
 
 function showFatal(message: string) {
   const el = document.createElement('div');

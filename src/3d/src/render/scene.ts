@@ -1,5 +1,7 @@
 // Synchronises the evaluated depsgraph into a three.js scene graph.
 import { boneVisible } from '../modes/armature/armkernels';
+import { glLimits } from './engine';
+import { isIOSLike } from '../ui/modifiers';
 import { boneShape } from '../modes/armature/boneshapes';
 import {
   Scene,
@@ -386,7 +388,7 @@ export class SceneSync {
     if (!(L instanceof RectAreaLight)) {
       L.castShadow = la.use_shadow;
       if (L.shadow) {
-        L.shadow.mapSize.set(doc.scene.render.shadow_cube_size * 2, doc.scene.render.shadow_cube_size * 2);
+        L.shadow.mapSize.set(clampShadow(doc.scene.render.shadow_cube_size * 2), clampShadow(doc.scene.render.shadow_cube_size * 2));
         L.shadow.bias = -0.0005;
         L.shadow.normalBias = 0.02;
         L.shadow.radius = 3;
@@ -396,7 +398,7 @@ export class SceneSync {
           cam.right = cam.top = 15;
           cam.near = 0.1;
           cam.far = 200;
-          L.shadow.mapSize.set(doc.scene.render.shadow_cascade_size * 2, doc.scene.render.shadow_cascade_size * 2);
+          L.shadow.mapSize.set(clampShadow(doc.scene.render.shadow_cascade_size * 2), clampShadow(doc.scene.render.shadow_cascade_size * 2));
           // place the sun far along its direction so the ortho shadow camera covers the scene
           L.position.set(0, 0, 0);
         }
@@ -473,4 +475,10 @@ export function imageEmptySize(ob: ObjectData, img: { width: number; height: num
 function imageEmptyKey(doc: DocumentData, ob: ObjectData) {
   const img = ob.data ? doc.images[ob.data] : undefined;
   return `|${ob.data}|${img?.width}x${img?.height}|${img?.revision ?? 0}|${ob.empty_image_offset ?? ''}|${ob.empty_image_depth}|${ob.empty_image_side}|${ob.use_empty_image_alpha ? ob.color[3] : 1}`;
+}
+
+/** Shadow maps never exceed the device texture limit (iPad Safari) — half it on iOS to leave room for the scene. */
+function clampShadow(size: number): number {
+  const lim = glLimits()?.maxTextureSize ?? 16384;
+  return Math.max(256, Math.min(size, isIOSLike() ? lim / 2 : lim));
 }

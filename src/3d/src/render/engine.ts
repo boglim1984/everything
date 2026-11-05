@@ -1,5 +1,6 @@
 // Shared WebGL2 renderer: a single context draws every 3D viewport into its
 // screen rectangle (scissored) behind the DOM interface, sharing GPU resources.
+import { cappedPixelRatio } from '../ui/modifiers';
 import { prefs } from '../app/prefs';
 import {
   WebGLRenderer,
@@ -32,6 +33,12 @@ export interface ViewportRenderer {
   animating?(): boolean;
 }
 
+/** limits of the live engine (set by its constructor) */
+let engineLimits: { maxTextureSize: number; maxRenderbufferSize: number } | null = null;
+export function glLimits() {
+  return engineLimits;
+}
+
 export class RenderEngine {
   canvas: HTMLCanvasElement;
   renderer: WebGLRenderer;
@@ -54,8 +61,13 @@ export class RenderEngine {
   })(() => this.requestDraw());
   private needsDraw = true;
   private raf = 0;
-  dpr = Math.min(2, window.devicePixelRatio || 1);
+  // iPad Safari: capped at 1.5 (2 elsewhere) to stay inside the per-tab GPU memory budget
+  dpr = cappedPixelRatio();
   lost = false;
+  /** restored after a context loss (iPad Safari kills contexts under memory pressure) */
+  onRestored?: () => void;
+  /** WebGL limits queried once; render targets and shadow maps are clamped to them */
+  limits = { maxTextureSize: 4096, maxRenderbufferSize: 4096 };
   onLost?: (message: string) => void;
   frameCallbacks = new Set<() => void>();
   /** called after every redraw of the shared canvas (e.g. to copy a viewport into an area window) */
@@ -81,10 +93,20 @@ export class RenderEngine {
     this.renderer.setPixelRatio(this.dpr);
     this.pmrem = new PMREMGenerator(this.renderer);
     RectAreaLightUniformsLib.init();
+    const gl = this.renderer.getContext();
+    this.limits.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096;
+    this.limits.maxRenderbufferSize = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096;
+    engineLimits = this.limits;
     this.canvas.addEventListener('webglcontextlost', (e) => {
+      // preventDefault lets the browser restore the context later (see webglcontextrestored)
       e.preventDefault();
       this.lost = true;
-      this.onLost?.('The graphics context was lost. Your work is kept; reload the page to continue.');
+      this.onLost?.('The graphics context was lost. Your work is kept; waiting for the browser to restore it…');
+    });
+    this.canvas.addEventListener('webglcontextrestored', () => {
+      this.lost = false;
+      this.onRestored?.();
+      this.requestDraw();
     });
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
@@ -94,7 +116,7 @@ export class RenderEngine {
   resize() {
     const w = this.canvas.parentElement!.clientWidth,
       h = this.canvas.parentElement!.clientHeight;
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.dpr = cappedPixelRatio();
     this.renderer.setPixelRatio(this.dpr);
     this.renderer.setSize(w, h, false);
     this.canvas.style.width = `${w}px`;
@@ -171,6 +193,10 @@ export class RenderEngine {
 
 /** Off-screen ID target for picking & outlines (RGBA8, nearest). */
 export function makeIdTarget(w: number, h: number) {
+  // clamp to the device limits (iPad Safari: 4096 or 8192) instead of failing to allocate
+  const lim = engineLimits?.maxRenderbufferSize ?? 16384;
+  w = Math.min(w, lim);
+  h = Math.min(h, lim);
   return new WebGLRenderTarget(Math.max(1, w), Math.max(1, h), {
     minFilter: NearestFilter,
     magFilter: NearestFilter,

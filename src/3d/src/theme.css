@@ -1504,6 +1504,8 @@ input.num-field.editing {
   position: absolute;
   inset: 0;
   outline: none;
+  /* iPad: the viewport owns every finger gesture (no page scroll / pinch-zoom) */
+  touch-action: none;
 }
 .v3d-svg {
   position: absolute;
@@ -2902,4 +2904,103 @@ input.num-field.editing {
 }
 .ov-axes .enum-row > button {
   min-width: 24px;
+}
+
+
+/* ---------------------------------------------------------------------------
+   iPad / touch (coarse pointer) support */
+
+/* non-blocking notice, e.g. a lost WebGL context on iPad Safari */
+.gl-banner {
+  position: fixed;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  z-index: 10000;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--c-header, #2b2b2b);
+  color: var(--c-text, #e5e5e5);
+  border: 1px solid var(--c-border, #444);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* sticky Shift / Ctrl / Alt toggles (hidden unless the pointer is a finger) */
+.mod-bar {
+  display: none;
+  position: fixed;
+  left: 50%;
+  bottom: 36px;
+  transform: translateX(-50%);
+  z-index: 900;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--c-header, #2b2b2b);
+  border: 1px solid var(--c-border, #444);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.mod-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--c-btn, #3a3a3a);
+  color: var(--c-text, #e5e5e5);
+  font-size: 13px;
+  font-weight: 500;
+}
+.mod-btn.on {
+  background: var(--c-accent, #4772b3);
+  color: #fff;
+}
+.v3d-svg .gz-hit {
+  pointer-events: stroke;
+  fill: transparent;
+  stroke: transparent;
+}
+.v3d-svg rect.gz-hit,
+.v3d-svg path.gz-hit[d$='Z'] {
+  pointer-events: all;
+}
+
+@media (pointer: coarse) {
+  .mod-bar {
+    display: flex;
+  }
+  /* 44x44 minimum hit targets (Apple HIG) for the controls that get tapped most */
+  .btn,
+  .tb-menu,
+  .ws-tab,
+  .hdr-icon,
+  .hdr-menu,
+  .hdr-toggle,
+  .v3d-toolbar button,
+  .tool-btn,
+  .menu-item,
+  .area-header-reveal,
+  .mod-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .menu-item {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .area-header,
+  .topbar {
+    height: auto;
+    min-height: 44px;
+  }
+  .num-field.slider > span,
+  input[type='range']::-webkit-slider-thumb {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .num-field,
+  .num-field.slider {
+    min-height: 44px;
+  }
 }
