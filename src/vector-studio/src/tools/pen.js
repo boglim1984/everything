@@ -13,6 +13,7 @@
  * removes the last anchor and drawing goes on.
  */
 import { Tool, tol, constrain45, constrainAngle } from './tool.js';
+import { hitScale } from '../ui/modifiers.js';
 import { createPath, pickStyle } from '../model/nodes.js';
 import { anchor, hasIn, hasOut, insertAnchor, nearestOnPath, reverseAnchors, autoSmooth } from '../model/bezier.js';
 import { buildSnapIndex, snapPoint } from './snap.js';
@@ -49,8 +50,8 @@ function endpointAt(editor, sx, sy, exclude) {
       const b = n.anchors[n.anchors.length - 1];
       const sa = view.toScreen(a.x, a.y);
       const sb = view.toScreen(b.x, b.y);
-      if (Math.hypot(sa.x - sx, sa.y - sy) < 6) found = { path: n, end: 'start' };
-      else if (Math.hypot(sb.x - sx, sb.y - sy) < 6) found = { path: n, end: 'end' };
+      if (Math.hypot(sa.x - sx, sa.y - sy) < 6 * hitScale()) found = { path: n, end: 'start' };
+      else if (Math.hypot(sb.x - sx, sb.y - sy) < 6 * hitScale()) found = { path: n, end: 'end' };
     }
     return true;
   });
@@ -134,11 +135,11 @@ export class PenTool extends Tool {
     if (p) {
       const first = p.anchors[0];
       const s = editor.view.toScreen(first.x, first.y);
-      if (p.anchors.length > 1 && Math.hypot(s.x - e.sx, s.y - e.sy) < 6) cursor = 'var(--cursor-pen-close)';
+      if (p.anchors.length > 1 && Math.hypot(s.x - e.sx, s.y - e.sy) < 6 * hitScale()) cursor = 'var(--cursor-pen-close)';
       else if (endpointAt(editor, e.sx, e.sy, p.id)) cursor = 'var(--cursor-pen-continue)';
       const last = p.anchors[p.anchors.length - 1];
       const sl = editor.view.toScreen(last.x, last.y);
-      if (Math.hypot(sl.x - e.sx, sl.y - e.sy) < 6) cursor = 'var(--cursor-pen-convert)';
+      if (Math.hypot(sl.x - e.sx, sl.y - e.sy) < 6 * hitScale()) cursor = 'var(--cursor-pen-convert)';
     } else {
       const sel = selectedPaths(editor);
       const ah = findAnchorOrHandle(editor, e.sx, e.sy, sel, { handles: false });
@@ -227,13 +228,13 @@ export class PenTool extends Tool {
     const sFirst = editor.view.toScreen(first.x, first.y);
     const sLast = editor.view.toScreen(last.x, last.y);
     const tx = doc.begin('Pen');
-    if (p.anchors.length > 1 && Math.hypot(sFirst.x - e.sx, sFirst.y - e.sy) < 6) {
+    if (p.anchors.length > 1 && Math.hypot(sFirst.x - e.sx, sFirst.y - e.sy) < 6 * hitScale()) {
       // Close the path; dragging adjusts the closing anchor's handles.
       doc.update(p.id, { closed: true });
       this.drag = { tx, index: 0, x0: first.x, y0: first.y, closing: true };
       return;
     }
-    if (Math.hypot(sLast.x - e.sx, sLast.y - e.sy) < 6) {
+    if (Math.hypot(sLast.x - e.sx, sLast.y - e.sy) < 6 * hitScale()) {
       // Click the last anchor to retract its outgoing handle; drag from it to pull out a new one.
       if (hasOut(last)) {
         const anchors = p.anchors.slice();
@@ -587,7 +588,7 @@ export class CurvatureTool extends Tool {
     }
     const near = (a) => {
       const s = editor.view.toScreen(a.x, a.y);
-      return Math.hypot(s.x - e.sx, s.y - e.sy) < 6;
+      return Math.hypot(s.x - e.sx, s.y - e.sy) < 6 * hitScale();
     };
     if (p.anchors.length > 2 && near(p.anchors[0])) {
       doc.transact('Curvature', () => doc.update(p.id, { anchors: this.rebuild(p.anchors, true), closed: true }));
