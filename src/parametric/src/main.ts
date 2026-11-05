@@ -53,7 +53,7 @@ async function boot() {
   // The assistant starts open wherever it docks beside the viewport; on
   // tablets and phones it would cover the model, so it waits to be opened.
   // No focus, so single-key shortcuts keep working.
-  if (matchMedia('(min-width: 981px)').matches) taskPane.open('assistant', false);
+  if (matchMedia('(min-width: 981px)').matches && !matchMedia('(any-pointer: coarse)').matches) taskPane.open('assistant', false);
   start = new StartScreen(app, files);
   bindAccountMenu(app);
   root.removeAttribute('aria-busy');

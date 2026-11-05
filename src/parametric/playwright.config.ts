@@ -15,13 +15,20 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     launchOptions: {
+      // PW_CHROMIUM lets a machine with a pre-installed Chromium run the suite without downloading browsers.
+      executablePath: process.env.PW_CHROMIUM || undefined,
       // Software WebGL2 so the suite runs on machines without a GPU.
       args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
     },
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }, testIgnore: /mobile\.spec\.ts/ },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }, testIgnore: /(mobile|ipad)\.spec\.ts/ },
     { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: /mobile\.spec\.ts/ },
+    // iPad Pro 12.9 and iPad Air, landscape and portrait; Safari-like UA, touch + pen.
+    { name: 'ipad-pro-landscape', use: { ...devices['iPad Pro 11 landscape'], defaultBrowserType: 'chromium', viewport: { width: 1366, height: 1024 } }, testMatch: /ipad\.spec\.ts/ },
+    { name: 'ipad-pro-portrait', use: { ...devices['iPad Pro 11'], defaultBrowserType: 'chromium', viewport: { width: 1024, height: 1366 } }, testMatch: /ipad\.spec\.ts/ },
+    { name: 'ipad-air-landscape', use: { ...devices['iPad Pro 11 landscape'], defaultBrowserType: 'chromium', viewport: { width: 1180, height: 820 } }, testMatch: /ipad\.spec\.ts/ },
+    { name: 'ipad-air-portrait', use: { ...devices['iPad Pro 11'], defaultBrowserType: 'chromium', viewport: { width: 820, height: 1180 } }, testMatch: /ipad\.spec\.ts/ },
   ],
   webServer: external
     ? undefined

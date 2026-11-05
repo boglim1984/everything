@@ -72,6 +72,18 @@ export class Viewport {
   private viewLabel: HTMLElement;
   private history: ReturnType<Camera['state']>[] = [];
   private longPress = 0;
+  /** Pointer id of the pen currently touching the screen (palm rejection). */
+  private penDown: number | null = null;
+  /** A stylus has been used: fingers navigate while a tool is active. */
+  penSeen = false;
+  /** Set from the touch bar: fingers draw/select even after a pen was seen. */
+  fingerDraws = false;
+  /** On-screen modifier toggles (touch bar) merged into every event. */
+  touchModifiers = { shift: false, ctrl: false };
+  /** Called when a modifier toggle should reset (after a one-shot use). */
+  onTouchModifierUsed: (() => void) | null = null;
+  /** Last tap position, for an on-screen context-menu button. */
+  lastTapClient: { x: number; y: number } | null = null;
   mouse: { x: number; y: number } | null = null;
   /** World point of the last model pick (for placing things on faces). */
   lastPoint: Vec3 | null = null;
@@ -107,8 +119,9 @@ export class Viewport {
   private ev(e: PointerEvent | MouseEvent): VPEvent {
     const r = this.canvas.getBoundingClientRect();
     const x = e.clientX - r.left, y = e.clientY - r.top;
+    const m = this.touchModifiers;
     return {
-      x, y, button: e.button, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey,
+      x, y, button: e.button, shift: e.shiftKey || m.shift, ctrl: e.ctrlKey || e.metaKey || m.ctrl, alt: e.altKey,
       ray: this.camera.ray(x, y), pointerType: (e as PointerEvent).pointerType ?? 'mouse', native: e,
     };
   }
@@ -144,9 +157,23 @@ export class Viewport {
     this.app.onCameraChange();
   }
 
+  /** Fingers navigate (never draw) when a stylus is the drawing device. */
+  private fingerNavigates(): boolean {
+    return this.penSeen && !this.fingerDraws;
+  }
+
   private onDown(e: PointerEvent) {
     this.canvas.focus({ preventScroll: true });
+    if (e.pointerType === 'pen') {
+      this.penSeen = true;
+      this.penDown = e.pointerId;
+      // A pen landing cancels any finger gesture (palm or stray touch).
+      if (this.touches.size) { this.touches.clear(); this.touchState = null; if (this.gesture.kind === 'touch') this.gesture = { kind: 'none' }; }
+    }
     if (e.pointerType === 'touch') {
+      // Palm rejection: ignore fingers while the pen is on the glass.
+      if (this.penDown !== null) return;
+      this.lastTapClient = { x: e.clientX, y: e.clientY };
       this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this.canvas.setPointerCapture(e.pointerId);
       if (this.touches.size === 2) {
@@ -160,7 +187,7 @@ export class Viewport {
       if (this.touches.size > 2) return;
     }
     const ev = this.ev(e);
-    this.canvas.setPointerCapture(e.pointerId);
+    try { this.canvas.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
     if (e.button === 1 || e.button === 2) {
       e.preventDefault();
       if (e.button === 1 && ev.ctrl) this.gesture = { kind: 'pan', x: ev.x, y: ev.y };
@@ -170,12 +197,14 @@ export class Viewport {
       return;
     }
     if (e.button !== 0) return;
-    if (this.tool?.pointerDown?.(ev)) {
+    const fingerNav = e.pointerType === 'touch' && this.fingerNavigates();
+    if (!fingerNav && this.tool?.pointerDown?.(ev)) {
       this.gesture = { kind: 'tool', id: e.pointerId, x: ev.x, y: ev.y, moved: false };
       return;
     }
     this.gesture = { kind: 'pending', x: ev.x, y: ev.y, button: 0, id: e.pointerId, e: ev };
-    if (e.pointerType === 'touch') {
+    // Touch and pen have no right button: a long press opens the context menu.
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
       clearTimeout(this.longPress);
       this.longPress = window.setTimeout(() => {
         if (this.gesture.kind === 'pending') {
@@ -187,6 +216,7 @@ export class Viewport {
   }
 
   private onMove(e: PointerEvent) {
+    if (e.pointerType === 'touch' && this.penDown !== null && !this.touches.has(e.pointerId)) return;
     if (e.pointerType === 'touch' && this.touches.has(e.pointerId)) {
       this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.gesture.kind === 'touch' && this.touches.size === 2) {
@@ -209,10 +239,14 @@ export class Viewport {
     if (g.kind === 'pending' && e.pointerId === g.id) {
       if (Math.hypot(ev.x - g.x, ev.y - g.y) < DRAG_PX) return;
       clearTimeout(this.longPress);
-      if (g.button === 0 && this.app.inSketch && this.tool?.pointerMove) {
+      const fingerNav = e.pointerType === 'touch' && this.fingerNavigates();
+      if (g.button === 0 && this.app.inSketch && this.tool?.pointerMove && !fingerNav) {
         // In sketch mode a left drag belongs to the editor (box select / drag).
         this.gesture = { kind: 'tool', id: g.id, x: g.x, y: g.y, moved: true };
         this.tool.pointerDown?.(g.e);
+      } else if (g.button === 0 && this.app.inSketch && fingerNav) {
+        // A finger in a sketch pans; the pen draws.
+        this.gesture = { kind: 'pan', x: g.x, y: g.y };
       } else if (g.button === 2 && this.app.inSketch && e.pointerType !== 'touch') {
         this.gesture = { kind: 'pan', x: g.x, y: g.y };
       } else {
@@ -245,7 +279,9 @@ export class Viewport {
   }
 
   private onUp(e: PointerEvent, cancelled = false) {
+    if (e.pointerType === 'pen' && this.penDown === e.pointerId) this.penDown = null;
     if (e.pointerType === 'touch') {
+      if (this.penDown !== null && !this.touches.has(e.pointerId)) return;
       this.touches.delete(e.pointerId);
       clearTimeout(this.longPress);
       if (this.gesture.kind === 'touch') {
@@ -272,14 +308,22 @@ export class Viewport {
         const now = performance.now();
         if (now - this.lastTap.t < 320 && Math.hypot(ev.x - this.lastTap.x, ev.y - this.lastTap.y) < 24) {
           this.lastTap.t = 0;
-          if (!this.tool?.dblClick?.(ev)) this.app.onViewportDoubleClick(ev);
+          if (this.fingerNavigates() || !this.tool?.dblClick?.(ev)) this.app.onViewportDoubleTap(ev);
           return;
         }
         this.lastTap = { t: now, x: ev.x, y: ev.y };
+        // Navigating fingers still select with a plain tap (no tool call).
+        if (this.fingerNavigates()) { this.app.onViewportClick(ev); this.consumeTouchModifiers(); return; }
       }
-      if (this.tool?.click?.(ev)) return;
+      if (this.tool?.click?.(ev)) { this.consumeTouchModifiers(); return; }
       this.app.onViewportClick(ev);
+      this.consumeTouchModifiers();
     }
+  }
+
+  /** One-shot on-screen modifiers reset after the click that used them. */
+  private consumeTouchModifiers() {
+    if (this.touchModifiers.shift || this.touchModifiers.ctrl) this.onTouchModifierUsed?.();
   }
 
   private touchMetrics() {
