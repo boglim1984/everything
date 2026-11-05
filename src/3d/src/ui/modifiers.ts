@@ -80,6 +80,7 @@ export function installModifierBar(root: HTMLElement, extra: { label: string; ti
     ['altKey', 'Alt', 'Sticky Alt: select cycling, axis snap while orbiting'],
   ];
   const buttons: HTMLButtonElement[] = [];
+  const extras: [HTMLButtonElement, () => boolean][] = [];
   for (const [key, label, tip] of keys) {
     const b = document.createElement('button');
     b.className = 'mod-btn';
@@ -103,13 +104,9 @@ export function installModifierBar(root: HTMLElement, extra: { label: string; ti
       x.onTap();
       sync();
     });
-    if (x.isOn) b.dataset.extra = '1';
     bar.append(b);
     buttons.push(b);
-    if (x.isOn) {
-      const fn = x.isOn;
-      listeners.add(() => b.classList.toggle('on', fn()));
-    }
+    if (x.isOn) extras.push([b, x.isOn]);
   }
   const sync = () => {
     for (const b of buttons) {
@@ -118,7 +115,13 @@ export function installModifierBar(root: HTMLElement, extra: { label: string; ti
       b.classList.toggle('on', modifierState[key]);
       b.setAttribute('aria-pressed', String(modifierState[key]));
     }
-    for (const fn of listeners) fn();
+    for (const [b, isOn] of extras) {
+      try {
+        b.classList.toggle('on', isOn());
+      } catch {
+        // the shell may not exist yet
+      }
+    }
   };
   listeners.add(sync);
   root.append(bar);

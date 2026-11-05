@@ -45,6 +45,7 @@ import { setMode } from './ops/object';
 import { loadFonts } from './io/fonts';
 import { registerModules } from './modules';
 import { restoreAssistant } from './assistant';
+import { activeTools } from './app/prefs';
 import { installModifierBar, preventPageZoom, modifierState, cappedPixelRatio, isCoarsePointer } from './ui/modifiers';
 
 // The app is Z-up; three.js defaults to Y-up for helpers.
@@ -179,6 +180,10 @@ installModifierBar(document.body, [
 // small debug surface for the iPad e2e tests and for the console
 (window as unknown as { __studio3dDebug: unknown }).__studio3dDebug = {
   pixelRatio: () => ctx?.engine.renderer.getPixelRatio() ?? 0,
+  setTool: (id: string) => {
+    activeTools[app.doc.mode] = id;
+    app.changed('ui');
+  },
   pixelRatioCap: () => cappedPixelRatio(),
   coarse: () => isCoarsePointer(),
   modifiers: modifierState,
