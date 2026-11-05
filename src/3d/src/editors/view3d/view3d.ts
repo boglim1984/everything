@@ -25,6 +25,8 @@ import { circlePaint, lassoDrag, modeFromEvent } from './selectshapes';
 import { applyMatrixToObject } from '../../eval/transform';
 import { altMiddle, snapViewToAxis } from './navextra';
 import { placeCursor, cursorToolSettings } from '../../ops/view3d';
+import { TouchGestures, penDown, penUp, anyPenDown, trackRelease } from './touch';
+import { getModifiers } from '../../ui/modifiers';
 
 export class View3D implements Editor, ViewportRenderer, DrawView {
   el: HTMLElement;
@@ -48,6 +50,8 @@ export class View3D implements Editor, ViewportRenderer, DrawView {
   clipPlanes: number[][] | null = null;
   /** the view direction cannot be changed (the fixed views of Quad View) */
   lockRotation = false;
+  /** iPad: finger gestures on the viewport (one finger orbits, two pan/pinch) */
+  touch = new TouchGestures(this);
   /** Quad View group this viewport belongs to, and its place in it */
   quad: { group: string; role: 'USER' | 'TOP' | 'FRONT' | 'RIGHT' } | null = null;
   /** Quad View: panning / zooming one fixed view moves the other fixed views too */
@@ -498,6 +502,11 @@ export class View3D implements Editor, ViewportRenderer, DrawView {
   private bindInput() {
     const el = this.el;
     el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    // a cancelled pointer (palm, system gesture, Pencil lifted off-screen) ends the active drag cleanly
+    el.addEventListener('pointercancel', (e) => {
+      penUp(e.pointerId);
+      if (app.modal) app.endModal('FINISHED');
+    });
     el.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('dblclick', (e) => {
@@ -582,7 +591,7 @@ export class View3D implements Editor, ViewportRenderer, DrawView {
     else this.nav.zoom(f);
   }
 
-  private leaveCameraIfNeeded() {
+  leaveCameraIfNeeded() {
     if (!this.cameraView) return;
     if (!this.lockCameraToView) this.leaveCamera();
     else {
@@ -636,6 +645,24 @@ export class View3D implements Editor, ViewportRenderer, DrawView {
     const t = e.target as HTMLElement;
     if (t.closest('.v3d-ui')) return;
     this.el.focus({ preventScroll: true });
+    // iPad: fingers drive the gesture handler; a pen (Apple Pencil) acts like the mouse, and while
+    // it is down any finger (resting palm) is ignored
+    if (e.pointerType === 'touch' && (anyPenDown() || !app.modal)) {
+      if (this.touch.pointerDown(e)) return;
+    }
+    if (e.pointerType === 'pen') {
+      penDown(e.pointerId);
+      const upPen = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        penUp(e.pointerId);
+        removeEventListener('pointerup', upPen, true);
+        removeEventListener('pointercancel', upPen, true);
+        untrack();
+      };
+      const untrack = trackRelease(() => upPen(e));
+      addEventListener('pointerup', upPen, true);
+      addEventListener('pointercancel', upPen, true);
+    }
     if (app.modal) {
       const r = app.modal.onPointerDown?.(e);
       if (r) app.endModal(r);
@@ -658,7 +685,8 @@ export class View3D implements Editor, ViewportRenderer, DrawView {
     }
     if (e.button === 1 || emulate3) {
       e.preventDefault();
-      this.navDrag(e, e.shiftKey && e.ctrlKey ? 'dolly' : e.shiftKey ? 'pan' : e.ctrlKey ? 'zoom' : 'orbit');
+      const m = getModifiers(e);
+      this.navDrag(e, m.shiftKey && m.ctrlKey ? 'dolly' : m.shiftKey ? 'pan' : m.ctrlKey ? 'zoom' : 'orbit');
       return;
     }
     if (e.button === 2 && e.ctrlKey && !app.modal) {
@@ -752,10 +780,17 @@ export class View3D implements Editor, ViewportRenderer, DrawView {
       this.boxEl.hidden = true;
       const mode = modeFromEvent(ev);
       if (dragging) selectObjects(this, start.x, start.y, q.x, q.y, mode as 'SET');
-      else selectPick(this, q.x, q.y, { extend: ev.shiftKey, deselectAll: !ev.shiftKey, toggle: ev.shiftKey, deselect: ev.ctrlKey && !ev.shiftKey, cycle: ev.altKey });
+      else this.tapSelect(ev);
     };
     addEventListener('pointermove', move);
     addEventListener('pointerup', up);
+  }
+
+  /** Click / Pencil tap / finger tap: pick the object under the pointer (sticky modifier bar honoured). */
+  tapSelect(ev: PointerEvent) {
+    const q = this.local(ev);
+    const m = getModifiers(ev);
+    selectPick(this, q.x, q.y, { extend: m.shiftKey, deselectAll: !m.shiftKey, toggle: m.shiftKey, deselect: m.ctrlKey && !m.shiftKey, cycle: m.altKey });
   }
 
   showBox(x0: number, y0: number, x1: number, y1: number, kind: 'box' | 'circle' = 'box') {
@@ -822,7 +857,15 @@ export class View3D implements Editor, ViewportRenderer, DrawView {
       this.el.removeEventListener('pointermove', move);
       this.el.removeEventListener('pointerup', up);
       this.el.removeEventListener('pointercancel', up);
+      try {
+        this.el.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      untrack();
     };
+    // window blur / hidden tab (iPad app switch) ends the orbit too
+    const untrack = trackRelease(up);
     this.el.addEventListener('pointermove', move);
     this.el.addEventListener('pointerup', up);
     this.el.addEventListener('pointercancel', up);

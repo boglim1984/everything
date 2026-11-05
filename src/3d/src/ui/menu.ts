@@ -738,9 +738,29 @@ export function installTooltips(root: HTMLElement) {
     if (!t) return;
     tipTimer = window.setTimeout(() => showTip(t), 650);
   });
-  root.addEventListener('pointerdown', () => {
+  root.addEventListener('pointerdown', (e) => {
     clearTimeout(tipTimer);
     hideTip();
+    // touch has no hover: holding a finger on a control for half a second shows its tooltip
+    if (e.pointerType !== 'touch') return;
+    const t = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
+    if (!t || t.closest('.view3d')) return;
+    const x = e.clientX,
+      y = e.clientY;
+    const cancel = () => {
+      clearTimeout(tipTimer);
+      root.removeEventListener('pointerup', cancel, true);
+      root.removeEventListener('pointercancel', cancel, true);
+      root.removeEventListener('pointermove', onMove, true);
+    };
+    const onMove = (ev: PointerEvent) => Math.hypot(ev.clientX - x, ev.clientY - y) > 8 && cancel();
+    root.addEventListener('pointerup', cancel, true);
+    root.addEventListener('pointercancel', cancel, true);
+    root.addEventListener('pointermove', onMove, true);
+    tipTimer = window.setTimeout(() => {
+      showTip(t);
+      window.setTimeout(hideTip, 2500);
+    }, 500);
   });
 }
 

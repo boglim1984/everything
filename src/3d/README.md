@@ -95,6 +95,35 @@ reference images, PDFs and text files. Everything it changes for one message is 
 Blender 2.80–5.x; import/export of glTF/GLB, FBX, OBJ/MTL, STL, PLY and USD (USDA/USDC/USDZ);
 import of Collada and Alembic; legacy `.3d.json` scenes from earlier versions of this app.
 
+## iPad and Apple Pencil
+
+The 3D viewport works with a finger and with the Apple Pencil (any `pointerType === "pen"` device):
+
+- **Pencil**: tap selects, dragging a transform-gizmo handle moves/rotates/scales, and brush strokes
+  (sculpt, paint, grease pencil) use `event.pressure` (Preferences ▸ Input ▸ Tablet shapes the curve).
+  While the Pencil is down, finger touches are ignored (palm rejection).
+- **One finger** orbits, **two fingers** pan and pinch-dolly, a **long press** opens the context menu,
+  a quick **two-finger tap** undoes and a **three-finger tap** redoes.
+- At a coarse pointer the sticky **Shift / Ctrl / Alt** bar (bottom centre) stands in for the
+  missing modifier keys, **Panels** maximizes the viewport (hides the outliner/properties), controls
+  grow to 44 px targets and holding a finger on a control shows its tooltip.
+- The renderer pixel ratio is capped at 2 (1.5 on iPadOS Safari), shadow maps and render targets
+  are clamped to `MAX_TEXTURE_SIZE` / `MAX_RENDERBUFFER_SIZE`, a lost WebGL context shows a banner
+  and the app resumes on `webglcontextrestored`. The status bar's Memory entry also lists GPU
+  geometries/textures (`renderer.info.memory`).
+
+The iPad emulation test lives in `tests/e2e/ipad-pencil.spec.ts` and runs under the `ipad`
+Playwright project (`devices["iPad Pro 11"]` in Chromium with touch):
+
+```sh
+npx playwright test --project=ipad
+# with a pre-installed Chromium:
+PW_CHROME_PATH=/path/to/chromium npx playwright test --project=ipad
+```
+
+`window.__studio3dDebug` exposes the pixel ratio, GL limits, modifier state and the view camera
+for tests and manual checks in the console.
+
 ## Known limitations
 
 - No camera solving (motion-tracking reconstruction), Multires, Dyntopo, Cycles-only features such

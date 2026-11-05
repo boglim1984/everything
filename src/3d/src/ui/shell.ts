@@ -1,5 +1,6 @@
 // Application shell: top bar (menus + workspace tabs), screen, status bar.
 import { h, patch, type Child } from './h';
+import { renderContext } from '../render/context';
 import { appIcon, icon } from './icons';
 import { openMenu, promptText, type MenuItem } from './menu';
 import { app, registerOperators } from '../app/app';
@@ -345,7 +346,12 @@ function sceneDuration(): string {
 /** Script memory in use, where the browser reports it. */
 function memoryText(): string {
   const m = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
-  return m ? `Memory: ${(m.usedJSHeapSize / 1048576).toFixed(1)} MiB` : '';
+  const parts: string[] = [];
+  if (m) parts.push(`Memory: ${(m.usedJSHeapSize / 1048576).toFixed(1)} MiB`);
+  // GPU resources held by three.js (iPad Safari has a small per-tab budget, so this is worth watching)
+  const gpu = renderContext?.engine.renderer.info.memory;
+  if (gpu) parts.push(`GPU: ${gpu.geometries} geo / ${gpu.textures} tex`);
+  return parts.join(' | ');
 }
 
 /** Right-click menu of the status bar: what its right side shows. */
@@ -355,7 +361,7 @@ function statusMenu(sh: Shell): MenuItem[] {
     savePrefs();
     sh.drawStatus();
   };
-  const hasMemory = !!(performance as Performance & { memory?: unknown }).memory;
+  const hasMemory = !!(performance as Performance & { memory?: unknown }).memory || !!renderContext;
   return [
     { label: 'Scene Statistics', checked: prefs.show_statusbar_stats, action: toggle('show_statusbar_stats') },
     { label: 'Scene Duration', checked: prefs.show_statusbar_scene_duration, action: toggle('show_statusbar_scene_duration') },

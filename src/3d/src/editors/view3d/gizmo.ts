@@ -6,6 +6,8 @@ import { activeTools, prefs } from '../../app/prefs';
 import type { View3D } from './view3d';
 import { startTransform, transformProviders } from '../../ops/transform';
 import { currentOrientation, orientationBasis } from '../../ops/orientations';
+import { isCoarsePointer } from '../../ui/modifiers';
+import { trackRelease } from './touch';
 
 const COLORS = ['#fc364b', '#84e003', '#398efc'];
 
@@ -140,6 +142,25 @@ export function transformGizmo(v: View3D): VNode | null {
     parts.push(h('circle', { cx: x, cy: y, r: R, fill: 'none', stroke: '#ffffff', 'stroke-width': 1.4, 'data-gizmo': 'rotate:view', class: 'gz' }));
     parts.push(h('circle', { cx: x, cy: y, r: R * 0.83, fill: 'transparent', stroke: 'rgba(255, 255, 255,0.15)', 'stroke-width': 1, 'data-gizmo': 'trackball', class: 'gz' }));
   }
+  // iPad / touch: every stroked handle gets an invisible twin with a ~44px wide stroke so a
+  // finger or the Pencil hits it reliably (the visible geometry stays thin)
+  if (isCoarsePointer()) {
+    const hits: VNode[] = [];
+    for (const p of parts) {
+      const pr = p.attrs;
+      if (!pr || !pr['data-gizmo']) continue;
+      const fat: Record<string, unknown> = { ...pr, class: 'gz gz-hit', stroke: 'transparent', 'stroke-width': 44, 'stroke-opacity': 0, 'fill-opacity': 0 };
+      if (pr.fill && pr.fill !== 'none') fat.fill = 'transparent';
+      if (p.tag === 'rect') {
+        fat.x = Number(pr.x) - 17;
+        fat.y = Number(pr.y) - 17;
+        fat.width = Number(pr.width) + 34;
+        fat.height = Number(pr.height) + 34;
+      }
+      hits.push(h(p.tag, fat));
+    }
+    parts.push(...hits);
+  }
   return h('g', { class: 'transform-gizmo' }, parts);
 }
 
@@ -158,10 +179,15 @@ export function gizmoPointerDown(v: View3D, e: PointerEvent): boolean {
   if (startTransform(mode, { constraint, event: ev, release_confirm: true, orient: currentOrientation(), redoSelf: true })) {
     const up = (pe: PointerEvent) => {
       removeEventListener('pointerup', up, true);
+      removeEventListener('pointercancel', up, true);
+      untrack();
       if (app.modal) app.endModal('FINISHED');
       void pe;
     };
+    // pointercancel (palm / system gesture on iPad) and window blur finish the drag like a release
+    const untrack = trackRelease(() => up(e));
     addEventListener('pointerup', up, true);
+    addEventListener('pointercancel', up, true);
   }
   void transformProviders;
   return true;
