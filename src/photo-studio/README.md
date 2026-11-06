@@ -123,6 +123,20 @@ rustup toolchain install 1.85.1 --profile minimal --target wasm32-unknown-unknow
 npm run wasm:build
 ```
 
+## iPad and Apple Pencil
+
+The workspace is usable on an iPad with a Pencil and fingers (iPadOS Safari, or the Puter app in a browser):
+
+- **Pencil pressure** drives brush size and opacity through a gentle curve (`penPressure` in `src/app/pointer.ts`). A brush that has never set its pressure toggles follows the pen; the options bar and the brush strip toggles store an explicit choice per brush. Fingers are ignored on the canvas while a Pencil is down (palm rejection), and losing the window (app switch, hidden tab, `pointercancel`) finishes the stroke and releases every captured pointer.
+- **Touch gestures** on the canvas (`src/app/touch.ts`): two fingers pan, pinch-zoom and rotate the view (rotation snaps to right angles when close); a two-finger tap undoes and a three-finger tap redoes; a long press opens the canvas context menu. A single finger draws with the active tool after a short grace period that lets a second finger turn it into a gesture. Safari's page-zoom `gesture*` events are blocked.
+- **Coarse-pointer UI** (`html[data-pointer='coarse']`, set from the `(pointer: coarse)` media query in `src/app/modifiers.ts`): 44px hit targets, always-visible close buttons and handles, a sticky Shift / Alt / Ctrl bar in the top-right corner of the canvas that pointer code reads through `getModifiers(event)`, and a left-thumb brush strip (size, opacity, hardness, flow, pressure toggles) docked bottom-left (`src/app/brush-strip.ts`). The panel toggle in the options bar (Tab) hides and shows the side docks.
+
+Run the iPad test (Chromium emulates an iPad Pro 11 with touch, and CDP sends real pen and multi-touch input; add `?pointer=coarse` or `?pointer=fine` to the URL to force the layout when trying it on a desktop):
+
+```sh
+PW_CHROME_PATH=/path/to/chrome npx playwright test tests/browser/ipad-pencil.spec.ts
+```
+
 ## Legal notes
 
 - Photo Studio's code, icons, cursors, presets (brushes, gradients, patterns, styles, shapes, color looks) and branding are original or come from permissively licensed projects listed in [docs/third-party.md](docs/third-party.md) and `public/THIRD_PARTY_NOTICES.txt`.

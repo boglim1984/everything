@@ -57,6 +57,16 @@ type Active = {
 let active: Active | undefined;
 const lastPoint = new Map<string, [number, number]>();
 
+/** Apple Pencil (and other pens) drive size and opacity by default: a brush whose
+ * dynamics never set the pressure toggles follows the pen; the options-bar
+ * toggles store an explicit choice either way. Mice report full pressure, so
+ * this changes nothing for them. */
+export function penDynamics(d: BrushDynamics, pointerType: string): BrushDynamics {
+  if (pointerType !== 'pen') return d;
+  return { ...d, pressureSize: d.pressureSize ?? true, pressureOpacity: d.pressureOpacity ?? true };
+}
+export const pressureOn = (d: BrushDynamics, key: 'pressureSize' | 'pressureOpacity') => d[key] ?? true;
+
 export function brushOptions(_e: Editor, id: string, extra = '') {
   const s = brushFor(id);
   // Normal, Dissolve, Behind and Clear first, then the layer mode groups.
@@ -68,10 +78,10 @@ export function brushOptions(_e: Editor, id: string, extra = '') {
 ${id === 'pencil' ? '' : `<label>Hardness <input id="brush-hardness" type="number" min="0" max="100" value="${Math.round(s.hardness * 100)}" aria-label="Brush hardness (%)">%</label>`}
 ${id === 'eraser' ? '' : `<label>Mode <select id="brush-mode" aria-label="Brush blend mode">${modes.map((m, i) => `${i > 3 && groupOf(m) !== groupOf(modes[i - 1]) || i === 4 ? '<option disabled>──────────</option>' : ''}<option value="${m}" ${s.mode === m ? 'selected' : ''}>${label(m)}</option>`).join('')}</select></label>`}
 <label>Opacity <input id="brush-opacity" type="number" min="1" max="100" value="${Math.round(s.opacity * 100)}" aria-label="Brush opacity (%)">%</label>
-<button class="icon-button toggle" id="pressure-opacity" aria-pressed="${!!s.dynamics.pressureOpacity}" title="Pressure controls opacity" aria-label="Pressure controls opacity">${svg('pressure-opacity', 16)}</button>
+<button class="icon-button toggle" id="pressure-opacity" aria-pressed="${pressureOn(s.dynamics, 'pressureOpacity')}" title="Pressure controls opacity (pen)" aria-label="Pressure controls opacity">${svg('pressure-opacity', 16)}</button>
 ${id === 'pencil' ? '' : `<label>Flow <input id="brush-flow" type="number" min="1" max="100" value="${Math.round(s.flow * 100)}" aria-label="Brush flow (%)">%</label><button class="icon-button toggle" id="airbrush" aria-pressed="${s.airbrush}" title="Airbrush build-up" aria-label="Airbrush">${svg('airbrush', 16)}</button>`}
 <label>Smoothing <input id="brush-smoothing" type="number" min="0" max="100" value="${Math.round(s.smoothing * 100)}" aria-label="Smoothing (%)">%</label>
-<button class="icon-button toggle" id="pressure-size" aria-pressed="${!!s.dynamics.pressureSize}" title="Pressure controls size" aria-label="Pressure controls size">${svg('pressure-size', 16)}</button>${extra}`;
+<button class="icon-button toggle" id="pressure-size" aria-pressed="${pressureOn(s.dynamics, 'pressureSize')}" title="Pressure controls size (pen)" aria-label="Pressure controls size">${svg('pressure-size', 16)}</button>${extra}`;
 }
 export function bindBrushOptions(e: Editor, el: HTMLElement, id: string) {
   const s = brushFor(id);
@@ -91,8 +101,8 @@ export function bindBrushOptions(e: Editor, el: HTMLElement, id: string) {
     f();
     e.options();
   });
-  toggle('#pressure-opacity', () => (s.dynamics.pressureOpacity = !s.dynamics.pressureOpacity));
-  toggle('#pressure-size', () => (s.dynamics.pressureSize = !s.dynamics.pressureSize));
+  toggle('#pressure-opacity', () => (s.dynamics.pressureOpacity = !pressureOn(s.dynamics, 'pressureOpacity')));
+  toggle('#pressure-size', () => (s.dynamics.pressureSize = !pressureOn(s.dynamics, 'pressureSize')));
   toggle('#airbrush', () => (s.airbrush = !s.airbrush));
   el.querySelector<HTMLButtonElement>('[data-brush-popover]')?.addEventListener('click', (ev) => openBrushPopover(e, id, ev.currentTarget as HTMLElement));
 }
@@ -199,7 +209,7 @@ export function strokeTool(id: string, label: string, icon: string, group: strin
         // The mixer brush carries paint in its tip; dabs one pixel apart keep
         // the dragged paint continuous instead of stepping in bands.
         tip: { ...s, hardness: id === 'pencil' ? 1 : s.hardness, size: s.size, spacing: id === 'mixer-brush' ? Math.min(s.spacing, 1 / Math.max(1, s.size)) : s.spacing },
-        dynamics: s.dynamics,
+        dynamics: penDynamics(s.dynamics, p.pointerType),
         opacity: s.opacity,
         flow: id === 'pencil' ? 1 : s.flow,
         target: paint,
